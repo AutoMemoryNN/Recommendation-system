@@ -38,11 +38,14 @@ class DataExtractor:
         csv_manager = CsvManager("raw-data/udemy_courses.csv")
         csv_manager.extractUdemyCourses(f"{self.output_path}/udemy_courses.csv")
 
-    def generateDataFile(self):
+    def generateDataFile(self, n_top=500):
         """
         Generates a consolidated CSV file named 'data.csv' by merging the 'title' and 'topic'
         columns from all CSV files in the output directory, except 'data.csv' itself.
         The final dataset retains only the top 500 topics with the highest number of associated titles.
+
+        Parameters:
+        n_top (int): The number of top topics to retain in the final dataset.
         """
         output_file = os.path.join(self.output_path, "data.csv")
         csv_files = [
@@ -65,8 +68,8 @@ class DataExtractor:
 
         result_df = self.filterInput(result_df)
 
-        # Count the number of titles per topic and keep the top 500 topics
-        top_topics = result_df["topic"].value_counts().nlargest(500).index
+        # Count the number of titles per topic and keep the n_top topics
+        top_topics = result_df["topic"].value_counts().nlargest(n_top).index
         filtered_df = result_df[result_df["topic"].isin(top_topics)]
 
         filtered_df.to_csv(output_file, index=False)
@@ -121,7 +124,12 @@ class DataExtractor:
             )
         )
 
-        df_title = df_title.apply(lambda x: x.replace("  ", " "))
+        df_title = df_title.apply(
+            lambda x: x.replace("  ", " ")
+            .replace("'", "")
+            .replace('"', "")
+            .replace(".", "")
+        )
 
         return pd.DataFrame({"title": df_title, "topic": df["topic"]})
 
@@ -136,6 +144,66 @@ class DataExtractor:
         for topic in df["topic"].value_counts().index[:top]:
             print(f"{topic}: {df[df['topic'] == topic].shape[0]}")
 
+    def generateTrainValTest(self, valRatio, testRatio, output_path=None):
+        """
+        Generate train, validation and test datasets from the consolidated data file 'data.csv'.
+        Ensures that the dataset is balanced across all topics.
+
+        Parameters:
+        valRatio (float): The ratio of the validation dataset.
+        testRatio (float): The ratio of the test dataset.
+        output_path (str, optional): Path to save the split datasets.
+                                    If None, uses the default output_path.
+        """
+        df = pd.read_csv(self.output_path + "/data.csv", dtype=str)
+
+        train_dfs = []
+        val_dfs = []
+        test_dfs = []
+
+        for topic, topic_df in df.groupby("topic"):
+            total_samples = len(topic_df)
+            val_samples = int(total_samples * valRatio)
+            test_samples = int(total_samples * testRatio)
+            train_samples = total_samples - val_samples - test_samples
+
+            # shuffle
+            topic_df_shuffled = topic_df.sample(frac=1, random_state=43)
+
+            train_split = topic_df_shuffled.iloc[:train_samples]
+            val_split = topic_df_shuffled.iloc[
+                train_samples : train_samples + val_samples
+            ]
+            test_split = topic_df_shuffled.iloc[train_samples + val_samples :]
+
+            train_dfs.append(train_split)
+            val_dfs.append(val_split)
+            test_dfs.append(test_split)
+
+        train_df = pd.concat(train_dfs, ignore_index=True)
+        val_df = pd.concat(val_dfs, ignore_index=True)
+        test_df = pd.concat(test_dfs, ignore_index=True)
+
+        train_path = output_path + "/train.csv"
+        val_path = output_path + "/val.csv"
+        test_path = output_path + "/test.csv"
+
+        train_df.to_csv(train_path, index=False)
+        val_df.to_csv(val_path, index=False)
+        test_df.to_csv(test_path, index=False)
+
+        print(f"Train dataset: {len(train_df)} samples")
+        print(f"Validation dataset: {len(val_df)} samples")
+        print(f"Test dataset: {len(test_df)} samples")
+
+        print("\nTopic distribution:")
+        print("Train topics:")
+        print(train_df["topic"].value_counts())
+        print("\nValidation topics:")
+        print(val_df["topic"].value_counts())
+        print("\nTest topics:")
+        print(test_df["topic"].value_counts())
+
 
 ds = DataExtractor()
 # data extraction from raw data
@@ -146,5 +214,7 @@ ds = DataExtractor()
 # ds.udemyCourses()
 
 # generate consolidated data file
-ds.generateDataFile()
+ds.generateDataFile(400)
 # ds.printLabels(500)
+
+ds.generateTrainValTest(0.1, 0.1, "data")
