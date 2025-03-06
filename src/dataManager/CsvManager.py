@@ -35,7 +35,9 @@ class CsvManager:
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
 
-        print(f"from: {len(self.df)} to: {len(dfNew)}")
+        print(
+            f"Extracted Coursera: from {len(self.df)} rows to {len(dfNew)} rows after processing.."
+        )
 
         dfNew.to_csv(output_path, index=False)
 
@@ -48,7 +50,6 @@ class CsvManager:
             topic = str(row.topic).replace("-", " ").strip()
 
             dfNew_rows.append({"title": title, "topic": topic})
-            print(f"Title: {title}, Topic: {topic}")
 
         dfNew = pd.DataFrame(dfNew_rows)
         dfNew.to_csv(output_path, index=False)
@@ -66,7 +67,9 @@ class CsvManager:
                     dfNew_rows.append({"title": title, "topic": topic})
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
-        print(f"from: {len(self.df)} to: {len(dfNew)}")
+        print(
+            f"Medium Posts: from {len(self.df)} rows to {len(dfNew)} rows after processing."
+        )
         dfNew.to_csv(output_path, index=False)
 
     def extractTedTalksEn(self, output_path):
@@ -86,10 +89,11 @@ class CsvManager:
             for topic in topics:
                 if topic:
                     dfNew_rows.append({"title": title, "topic": topic.strip()})
-                    print(f"Title: {title}, Topic: {topic}")
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
-        print(f"from: {len(self.df)} to: {len(dfNew)}")
+        print(
+            f"Extracted TED Talks: from {len(self.df)} rows to {len(dfNew)} rows after processing."
+        )
         dfNew.to_csv(output_path, index=False)
 
     def extractUdemyCourses(self, output_path):
@@ -102,7 +106,7 @@ class CsvManager:
             if not re.fullmatch(
                 r"[A-Za-z0-9\u00C0-\u024F\s\.,!?;:'\"()&/\+\|\#\-\u2014]+", title
             ):
-                print("skip: " + title)
+                print("Udemy titles skipped: " + title)
                 continue
 
             topic = str(row.subject).strip()
@@ -111,7 +115,7 @@ class CsvManager:
                 dfNew_rows.append({"title": title, "topic": topic})
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
-        print(f"from: {len(self.df)} to: {len(dfNew)}")
+        print(f"Udemy Courses: from {len(self.df)} rows to {len(dfNew)} rows.")
         dfNew.to_csv(output_path, index=False)
 
     def save_to_csv(self, output_path):
