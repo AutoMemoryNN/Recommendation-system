@@ -1,6 +1,8 @@
 import os
 import re
 import spacy.lang.en as en
+import spacy.tokenizer as Tokenizer
+from transformers import BertTokenizer
 import pandas as pd
 
 from .CsvManager import CsvManager
@@ -129,6 +131,8 @@ class DataExtractor:
             .replace("'", "")
             .replace('"', "")
             .replace(".", "")
+            .replace("/", " ")
+            .replace("-", " ")
         )
 
         return pd.DataFrame({"title": df_title, "topic": df["topic"]})
@@ -144,7 +148,9 @@ class DataExtractor:
         for topic in df["topic"].value_counts().index[:top]:
             print(f"{topic}: {df[df['topic'] == topic].shape[0]}")
 
-    def generateTrainValTest(self, valRatio, testRatio, output_path=None):
+    def generateTrainValTest(
+        self, valRatio, testRatio, nonTokenizedDataDir=None, outputPath=None
+    ):
         """
         Generate train, validation and test datasets from the consolidated data file 'data.csv'.
         Ensures that the dataset is balanced across all topics.
@@ -184,13 +190,17 @@ class DataExtractor:
         val_df = pd.concat(val_dfs, ignore_index=True)
         test_df = pd.concat(test_dfs, ignore_index=True)
 
-        train_path = output_path + "/train.csv"
-        val_path = output_path + "/val.csv"
-        test_path = output_path + "/test.csv"
+        train_path = nonTokenizedDataDir + "/train.csv"
+        val_path = nonTokenizedDataDir + "/val.csv"
+        test_path = nonTokenizedDataDir + "/test.csv"
 
         train_df.to_csv(train_path, index=False)
         val_df.to_csv(val_path, index=False)
         test_df.to_csv(test_path, index=False)
+
+        self.tokenizeData(test_df, f"{outputPath}/test.csv")
+        self.tokenizeData(val_df, f"{outputPath}/val.csv")
+        self.tokenizeData(train_df, f"{outputPath}/train.csv")
 
         print(f"Train dataset: {len(train_df)} samples")
         print(f"Validation dataset: {len(val_df)} samples")
@@ -204,6 +214,31 @@ class DataExtractor:
         print("\nTest topics:")
         print(test_df["topic"].value_counts())
 
+    def tokenizeData(self, df, output_path):
+        """
+        Tokenize the 'title' column in the 'data.csv' file using the spaCy tokenizer.
+
+        Parameters:
+        df (pd.DataFrame): Input DataFrame containing a 'title' column.
+        output_path (str): Path to save the tokenized data.
+
+        The method adds a new column 'tokenized_title' to the DataFrame,
+        where each title is converted into a list of lower-case tokens (excluding spaces).
+        Finally, the modified DataFrame is saved to the specified output path.
+        """
+
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        df_title = df["title"].apply(
+            lambda x: tokenizer.convert_tokens_to_ids(
+                tokenizer.tokenize(str(x).lower())
+            )
+        )
+
+        df_output = pd.DataFrame({"title": df_title, "topic": df["topic"]})
+        df_output.to_csv(output_path, index=False)
+
+        print(f"Tokenized data saved to: {output_path}")
+
 
 ds = DataExtractor()
 # data extraction from raw data
@@ -214,7 +249,7 @@ ds = DataExtractor()
 # ds.udemyCourses()
 
 # generate consolidated data file
-ds.generateDataFile(400)
+# ds.generateDataFile(400)
 # ds.printLabels(500)
 
-ds.generateTrainValTest(0.1, 0.1, "data")
+ds.generateTrainValTest(0.1, 0.1, "filtered-data/non-tokenized", "data")
