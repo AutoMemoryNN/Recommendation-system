@@ -1,4 +1,5 @@
 import ast
+import json
 import os
 import re
 import numpy as np
@@ -20,9 +21,11 @@ class DataExtractor:
     FILTERED_DATA_DIR = "filtered-data"
     NON_TOKENIZED_DIR = "filtered-data/non-tokenized"
     TOKENIZED_DATA_DIR = "data/csv_data"
-
+    ONE_HOT_MAPPING_DIR = "data"
     NP_X_DATA_PATH = "data/x_data"
     NP_Y_DATA_PATH = "data/y_data"
+
+    SKIP_TOPICS = []
 
     # Hyperparameter configuration
     DEFAULT_TOP_TOPICS = 400
@@ -32,7 +35,7 @@ class DataExtractor:
 
     ADD_PADDING = True
 
-    max_tittle_length = 0
+    LEN_OF_TOKENS = 0
 
     def __init__(self):
         """Initializes the data extractor and creates the necessary directories."""
@@ -43,6 +46,9 @@ class DataExtractor:
         os.makedirs(self.FILTERED_DATA_DIR, exist_ok=True)
         os.makedirs(self.NON_TOKENIZED_DIR, exist_ok=True)
         os.makedirs(self.TOKENIZED_DATA_DIR, exist_ok=True)
+        os.makedirs(self.NP_X_DATA_PATH, exist_ok=True)
+        os.makedirs(self.NP_Y_DATA_PATH, exist_ok=True)
+        os.makedirs(self.ONE_HOT_MAPPING_DIR, exist_ok=True)
 
     def extract_all_datasets(self):
         """Extracts all available datasets."""
@@ -142,20 +148,20 @@ class DataExtractor:
 
         return filtered_df
 
-    def _filter_input(self, df: pd.DataFrame) -> pd.DataFrame:
+    def filter_text(self, text: str) -> str:
         """
-        Processes the input DataFrame by performing the following transformations:
+        Filters a text string by performing the following transformations:
 
-        1. Removes stop words from the 'title' column.
-        2. Converts all words in 'title' to lowercase.
-        3. Removes emojis from the 'title' column.
-        4. Removes special characters from the 'title' column.
+        1. Removes stop words
+        2. Converts all words to lowercase
+        3. Removes emojis
+        4. Removes special characters
 
         Parameters:
-        df (pd.DataFrame): Input DataFrame containing a 'title' column.
+        text (str): Input text to filter
 
         Returns:
-        pd.DataFrame: Processed DataFrame with clean 'title' values.
+        str: Filtered text
         """
         emoji_pattern = re.compile(
             """
@@ -176,22 +182,22 @@ class DataExtractor:
 
         special_chars_pattern = re.compile(r"[|!?<>:;\[\]{}=\-+_)(*&^$#@!',]")
 
-        df_title = df["title"].apply(
-            lambda x: " ".join(
-                [
-                    re.sub(
-                        special_chars_pattern,
-                        "",
-                        re.sub(emoji_pattern, "", word.lower()),
-                    )
-                    for word in x.split()
-                    if word.lower() not in en.stop_words.STOP_WORDS
-                ]
-            )
+        # Process each word in the text
+        filtered_text = " ".join(
+            [
+                re.sub(
+                    special_chars_pattern,
+                    "",
+                    re.sub(emoji_pattern, "", word.lower()),
+                )
+                for word in text.split()
+                if word.lower() not in en.stop_words.STOP_WORDS
+            ]
         )
 
-        df_title = df_title.apply(
-            lambda x: x.replace("  ", " ")
+        # Additional cleanup
+        filtered_text = (
+            filtered_text.replace("  ", " ")
             .replace("'", "")
             .replace('"', "")
             .replace(".", "")
@@ -199,7 +205,28 @@ class DataExtractor:
             .replace("-", " ")
         )
 
-        return pd.DataFrame({"title": df_title, "topic": df["topic"]})
+        return filtered_text
+
+    def _filter_input(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Processes the input DataFrame by filtering the 'title' column and removing rows
+        with topics listed in self.SKIP_TOPICS.
+
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing a 'title' column.
+
+        Returns:
+            pd.DataFrame: Processed DataFrame with cleaned 'title' values and filtered topics.
+        """
+        print("\n[Info] Rows before filtering SKIP_TOPICS:", len(df))
+
+        df_filtered = df[~df["topic"].isin(self.SKIP_TOPICS)]
+
+        print("[Info] Rows after filtering SKIP_TOPICS:", len(df_filtered))
+
+        df_title = df_filtered["title"].apply(self.filter_text)
+
+        return pd.DataFrame({"title": df_title, "topic": df_filtered["topic"]})
 
     def print_topic_distribution(self, top_n: int = 10):
         """
@@ -325,24 +352,43 @@ class DataExtractor:
         print("Training topics:")
         print(train_df["topic"].value_counts().head())
 
-    def _tokenize_data(self, df: pd.DataFrame, output_path: str, tokenizer_name: str):
+    def tokenize_text(
+        self, text: str, tokenizer: BertTokenizer.from_pretrained = None
+    ) -> list:
         """
-        Tokenizes the 'title' column using the specified tokenizer.
+        Tokenizes a single text string using the provided tokenizer.
+
+        Parameters:
+        text (str): The text to tokenize.
+        tokenizer: The tokenizer object to use.
+
+        Returns:
+        list: The tokenized text as a list of token IDs.
+        """
+        if tokenizer is None:
+            tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+        return tokenizer.convert_tokens_to_ids(tokenizer.tokenize(str(text).lower()))
+
+    def _tokenize_data(
+        self,
+        df: pd.DataFrame,
+        output_path: str,
+        tokenizer_name: str = "bert-base-uncased",
+    ):
+        """
+        Tokenizes the 'title' column using the specified tokenizer and saves to a file.
 
         Parameters:
         df (pd.DataFrame): Input DataFrame with a 'title' column.
         output_path (str): Path to save the tokenized data.
-        tokenizer_name (str): Name of the tokenizer to use.
+        tokenizer_name (str): Name of the tokenizer to use (default: "bert-base-uncased").
         """
         print(f"[Tokenization] Initializing tokenizer '{tokenizer_name}'...")
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
 
-        # Tokenize each title, converting tokens to IDs and to lowercase
-        df_title = df["title"].apply(
-            lambda x: tokenizer.convert_tokens_to_ids(
-                tokenizer.tokenize(str(x).lower())
-            )
-        )
+        # Tokenize each title using the tokenize_text function
+        df_title = df["title"].apply(lambda x: self.tokenize_text(x, tokenizer))
         print("[Tokenization] Tokenization of 'title' column completed.")
 
         # Create output DataFrame and remove rows with empty tokenized titles
@@ -359,8 +405,8 @@ class DataExtractor:
             min_length = min(lengths)
             avg_length = sum(lengths) / len(lengths) if lengths else 0
 
-            if max_length > self.max_tittle_length:
-                self.max_tittle_length = max_length
+            if max_length > self.LEN_OF_TOKENS:
+                self.LEN_OF_TOKENS = max_length
 
             print(
                 f"[Padding] Token lengths statistics: Max = {max_length}, Min = {min_length}, Avg = {avg_length:.2f}"
@@ -369,34 +415,44 @@ class DataExtractor:
         df_output.to_csv(output_path, index=False)
         print(f"[Save] Tokenized data successfully saved to: {output_path}\n")
 
-    def add_padding(self, path: str):
+    def pad_token(self, token_list: list) -> list:
         """
-        Adds padding to the tokenized data.
+        Adds padding to a token sequence.
 
         Parameters:
-        path (str): Path to the tokenized data file to addding padding.
+        token_list (list): List of tokens to pad
+
+        Returns:
+        list: Padded token list
+        """
+        if self.LEN_OF_TOKENS == 0:
+            raise ValueError("ERROR: LEN_OF_TOKENS is not set. Please set it first.")
+        # Add padding
+        padded_tokens = token_list + [0] * (self.LEN_OF_TOKENS - len(token_list))
+        return padded_tokens
+
+    def add_padding(self, path: str):
+        """
+        Adds padding to the tokenized data in a file.
+
+        Parameters:
+        path (str): Path to the tokenized data file to add padding.
         """
         df = pd.read_csv(path, dtype=str)
-
         padded_titles = []
 
         for title_str in df["title"]:
             # Convert string representation of list to actual list of integers
-
             title_tokens = eval(title_str)
             if not isinstance(title_tokens, list):
                 title_tokens = [int(title_str)] if title_str.isdigit() else []
 
-            # Add padding
-            padded_tokens = title_tokens + [0] * (
-                self.max_tittle_length - len(title_tokens)
-            )
+            padded_tokens = self.pad_token(title_tokens)
 
             # Convert back to string representation
             padded_titles.append(str(padded_tokens))
 
         df_output = pd.DataFrame({"title": padded_titles, "topic": df["topic"]})
-
         df_output.to_csv(path, index=False)
 
     def save_data_to_numpy(self):
@@ -467,7 +523,15 @@ class DataExtractor:
         self._oneHotEncode(test_data["topic"].tolist(), self.NP_Y_DATA_PATH + "/test")
         print("[INFO] One-hot encoding completed.")
 
-    def _oneHotEncode(self, targets: list, np_path: str):
+    def _oneHotEncode(self, targets: list, save_path: str):
+        """
+        One-hot encodes a list of target labels and saves the mapping as a JSON file.
+
+        Parameters:
+            targets (list): List of target labels to be one-hot encoded.
+            save_path (str): Path where the one-hot encoded numpy array would be saved
+                            (if needed) and the mapping will be stored in ONE_HOT_MAPPING_DIR.
+        """
         unique_labels = sorted(list(set(targets)))
         label_to_index = {label: i for i, label in enumerate(unique_labels)}
 
@@ -478,12 +542,41 @@ class DataExtractor:
 
         # Create empty array of shape (n_samples, n_classes)
         one_hot_encoded = np.zeros((n_samples, n_classes))
-
         for i, label in enumerate(targets):
             one_hot_encoded[i, label_to_index[label]] = 1
 
-        np.save(np_path, one_hot_encoded)
-        print(f"[INFO] Saved one-hot encoded labels to {np_path}")
+        # Save the mapping as JSON
+        mapping_path = self.ONE_HOT_MAPPING_DIR + "/one_hot_mapping.json"
+        with open(mapping_path, "w") as f:
+            json.dump(label_to_index, f)
+        print(f"[INFO] Saved label mapping to {mapping_path}")
+
+        # Optionally, save the one-hot encoded array if needed:
+        # np.save(save_path, one_hot_encoded)
+
+    def onehot_to_string(self, onehot: np.ndarray):
+        """
+        Takes a one-hot encoded array or an index and returns the string representation of the label.
+        Loads the mapping from ONE_HOT_MAPPING_DIR/one_hot_mapping.json to get the mapping.
+
+        Parameters:
+            onehot (np.ndarray or int): One-hot encoded array or index.
+
+        Returns:
+            str: The label corresponding to the given index.
+        """
+        mapping_path = self.ONE_HOT_MAPPING_DIR + "/one_hot_mapping.json"
+        with open(mapping_path, "r") as f:
+            mapping = json.load(f)
+
+        # Reverse the mapping: keys become indices, values become topics.
+        index_to_label = {v: k for k, v in mapping.items()}
+
+        # If the input is a numpy array, convert it to int.
+        if isinstance(onehot, np.ndarray):
+            onehot = int(onehot)  # or onehot.item() if it's a single element array
+
+        return index_to_label[onehot]
 
     def process_pipeline(
         self,
@@ -516,5 +609,6 @@ class DataExtractor:
         print("\nData processing pipeline completed successfully!")
 
 
-de = DataExtractor()
-de.process_pipeline()
+# de = DataExtractor()
+# de.SKIP_TOPICS = [".properties"]
+# de.process_pipeline()
