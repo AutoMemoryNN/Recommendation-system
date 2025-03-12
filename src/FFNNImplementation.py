@@ -2,7 +2,7 @@ import numpy as np
 
 from tensorflow.keras.models import Sequential  # type: ignore
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization  # type: ignore
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint  # type: ignore
+from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 
 import matplotlib.pyplot as plt
 
@@ -71,18 +71,13 @@ def train_model(model, x_train, y_train, x_val, y_val, batch_size=64, epochs=10)
         monitor="val_loss", patience=5, restore_best_weights=True
     )
 
-    model_checkpoint = ModelCheckpoint(
-        "best_model.h5", monitor="val_loss", save_best_only=True
-    )
-
-    # Train the model
     history = model.fit(
         x_train,
         y_train,
         validation_data=(x_val, y_val),
         batch_size=batch_size,
         epochs=epochs,
-        callbacks=[early_stopping, model_checkpoint],
+        callbacks=[early_stopping],
         verbose=1,
     )
 
