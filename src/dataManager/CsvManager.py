@@ -99,6 +99,8 @@ class CsvManager:
     def extractUdemyCourses(self, output_path):
         """Extracts the structured information from the udemy_courses.csv file."""
         dfNew_rows = []
+        skipped_titles = []
+        skip_count = 0
 
         for row in self.df.itertuples(index=False):
             title = row.course_title
@@ -106,17 +108,27 @@ class CsvManager:
             if not re.fullmatch(
                 r"[A-Za-z0-9\u00C0-\u024F\s\.,!?;:'\"()&/\+\|\#\-\u2014]+", title
             ):
-                print("Udemy titles skipped: " + title)
+                # Guardar solo los primeros 5 títulos omitidos
+                if skip_count < 5:
+                    skipped_titles.append(title)
+                skip_count += 1
                 continue
 
             topic = str(row.subject).strip()
-
             if topic:
                 dfNew_rows.append({"title": title, "topic": topic})
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
-        print(f"Udemy Courses: from {len(self.df)} rows to {len(dfNew)} rows.")
+        print(
+            f"Udemy Courses: Processed {len(self.df)} rows, retained {len(dfNew)} rows."
+        )
+        if skip_count > 0:
+            sample_skips = ", ".join(skipped_titles)
+            print(
+                f"Skipped {skip_count} titles. Examples of skipped titles: {sample_skips}"
+            )
         dfNew.to_csv(output_path, index=False)
+        print(f"Consolidated Udemy courses saved to: {output_path}")
 
     def save_to_csv(self, output_path):
         """Guarda el DataFrame modificado en un archivo CSV."""

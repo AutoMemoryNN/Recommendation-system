@@ -1,5 +1,7 @@
+import ast
 import os
 import re
+import numpy as np
 import spacy.lang.en as en
 from transformers import BertTokenizer
 import pandas as pd
@@ -17,13 +19,20 @@ class DataExtractor:
     RAW_DATA_DIR = "raw-data"
     FILTERED_DATA_DIR = "filtered-data"
     NON_TOKENIZED_DIR = "filtered-data/non-tokenized"
-    TOKENIZED_DATA_DIR = "data"
+    TOKENIZED_DATA_DIR = "data/csv_data"
+
+    NP_X_DATA_PATH = "data/x_data"
+    NP_Y_DATA_PATH = "data/y_data"
 
     # Hyperparameter configuration
     DEFAULT_TOP_TOPICS = 400
     DEFAULT_VAL_RATIO = 0.1
     DEFAULT_TEST_RATIO = 0.1
     RANDOM_SEED = 43
+
+    ADD_PADDING = True
+
+    max_tittle_length = 0
 
     def __init__(self):
         """Initializes the data extractor and creates the necessary directories."""
@@ -80,18 +89,20 @@ class DataExtractor:
     def generate_consolidated_data(self, n_top_topics: int = None):
         """
         Generates a consolidated CSV file 'data.csv' by combining the 'title' and 'topic' columns
-        from all CSV files in the output directory, except 'data.csv'.
-        The final dataset retains only the top topics with the highest number of associated titles.
+        from all CSV files in the filtered data directory (excluding 'data.csv').
+        Only the top topics (with the highest number of associated titles) are retained.
 
         Parameters:
-        n_top_topics (int, optional): The number of top topics to retain. If None, uses the default value.
+        n_top_topics (int, optional): Number of top topics to retain. If None, uses the default value.
+
+        Returns:
+        pd.DataFrame: The filtered DataFrame containing only the top topics.
         """
         if n_top_topics is None:
             n_top_topics = self.DEFAULT_TOP_TOPICS
 
-        print(
-            f"\nStep 2: Generating consolidated data file with the top {n_top_topics} topics..."
-        )
+        print("\n[Step 2] Consolidated Data Generation")
+        print(f" - Retaining the top {n_top_topics} topics based on title frequency.")
 
         output_file = os.path.join(self.FILTERED_DATA_DIR, "data.csv")
         csv_files = [
@@ -101,24 +112,33 @@ class DataExtractor:
         ]
 
         if not csv_files:
-            raise ValueError("No valid CSV files found in the directory.")
+            raise ValueError("ERROR: No valid CSV files found in the directory.")
 
         merged_data = []
-
+        print("\n[Info] Reading and merging CSV files:")
         for file in csv_files:
             file_path = os.path.join(self.FILTERED_DATA_DIR, file)
+            print(f" - Reading file: {file_path}")
             df = pd.read_csv(file_path, usecols=["title", "topic"], dtype=str)
             merged_data.append(df)
 
         result_df = pd.concat(merged_data, ignore_index=True).drop_duplicates()
+        print(
+            f"\n[Info] Total merged samples (after removing duplicates): {len(result_df)}"
+        )
+
+        # Aplicar filtro a la columna 'title'
         result_df = self._filter_input(result_df)
 
-        # Count the number of titles per topic and save the top n topics
+        # Seleccionar los tópicos más frecuentes
         top_topics = result_df["topic"].value_counts().nlargest(n_top_topics).index
         filtered_df = result_df[result_df["topic"].isin(top_topics)]
+        print(
+            f"[Info] Retained topics count: {len(filtered_df)} samples out of {len(result_df)}"
+        )
 
         filtered_df.to_csv(output_file, index=False)
-        print(f"Consolidated file generated: {output_file}")
+        print(f"\n[Success] Consolidated file generated and saved at: {output_file}")
 
         return filtered_df
 
@@ -154,7 +174,7 @@ class DataExtractor:
             re.VERBOSE,
         )
 
-        special_chars_pattern = re.compile(r"[|!?<>:;\[\]{}=\-+_)(*&^%$#@!',]")
+        special_chars_pattern = re.compile(r"[|!?<>:;\[\]{}=\-+_)(*&^$#@!',]")
 
         df_title = df["title"].apply(
             lambda x: " ".join(
@@ -223,29 +243,33 @@ class DataExtractor:
             val_ratio = self.DEFAULT_VAL_RATIO
         if test_ratio is None:
             test_ratio = self.DEFAULT_TEST_RATIO
-            print(
-                f"\nStep 3: Splitting and tokenizing data (val_ratio={val_ratio}, test_ratio={test_ratio})..."
-            )
 
-            try:
-                df = pd.read_csv(f"{self.FILTERED_DATA_DIR}/data.csv", dtype=str)
-            except FileNotFoundError:
-                print(
-                    "The file data.csv does not exist. Please run generate_consolidated_data() first."
-                )
-                return
+        print(
+            f"\n[Step 3] Splitting and tokenizing data\n"
+            f" - Validation ratio: {val_ratio}\n"
+            f" - Test ratio: {test_ratio}"
+        )
+
+        try:
+            df = pd.read_csv(f"{self.FILTERED_DATA_DIR}/data.csv", dtype=str)
+        except FileNotFoundError:
+            print(
+                "ERROR: The file 'data.csv' does not exist. Please run generate_consolidated_data() first."
+            )
+            return
 
         train_dfs = []
         val_dfs = []
         test_dfs = []
 
+        # Procesar cada grupo de datos por tópico
         for topic, topic_df in df.groupby("topic"):
             total_samples = len(topic_df)
             val_samples = int(total_samples * val_ratio)
             test_samples = int(total_samples * test_ratio)
             train_samples = total_samples - val_samples - test_samples
 
-            # Shuffle randomly
+            # Mezclar aleatoriamente los datos del tópico
             topic_df_shuffled = topic_df.sample(frac=1, random_state=self.RANDOM_SEED)
 
             train_split = topic_df_shuffled.iloc[:train_samples]
@@ -262,41 +286,44 @@ class DataExtractor:
         val_df = pd.concat(val_dfs, ignore_index=True)
         test_df = pd.concat(test_dfs, ignore_index=True)
 
-        # Save non-tokenized versions
-        train_path = f"{self.NON_TOKENIZED_DIR}/train.csv"
-        val_path = f"{self.NON_TOKENIZED_DIR}/val.csv"
-        test_path = f"{self.NON_TOKENIZED_DIR}/test.csv"
+        # Guardar versiones sin tokenizar
+        non_token_train_path = f"{self.NON_TOKENIZED_DIR}/train.csv"
+        non_token_val_path = f"{self.NON_TOKENIZED_DIR}/val.csv"
+        non_token_test_path = f"{self.NON_TOKENIZED_DIR}/test.csv"
 
-        train_df.to_csv(train_path, index=False)
-        val_df.to_csv(val_path, index=False)
-        test_df.to_csv(test_path, index=False)
+        train_df.to_csv(non_token_train_path, index=False)
+        val_df.to_csv(non_token_val_path, index=False)
+        test_df.to_csv(non_token_test_path, index=False)
 
-        print("Non-tokenized datasets saved.")
-        print("Tokenizing data...")
+        print("\n[Info] Non-tokenized datasets saved to:")
+        print(f"   Train: {non_token_train_path}")
+        print(f"   Validation: {non_token_val_path}")
+        print(f"   Test: {non_token_test_path}")
 
-        # Tokenize and save
-        self._tokenize_data(
-            test_df, f"{self.TOKENIZED_DATA_DIR}/test.csv", tokenizer_name
-        )
-        self._tokenize_data(
-            val_df, f"{self.TOKENIZED_DATA_DIR}/val.csv", tokenizer_name
-        )
-        self._tokenize_data(
-            train_df, f"{self.TOKENIZED_DATA_DIR}/train.csv", tokenizer_name
-        )
+        print("\n[Info] Starting tokenization process...")
+        train_path = f"{self.TOKENIZED_DATA_DIR}/train.csv"
+        val_path = f"{self.TOKENIZED_DATA_DIR}/val.csv"
+        test_path = f"{self.TOKENIZED_DATA_DIR}/test.csv"
 
-        print("\nData split statistics:")
+        # Tokenizar y guardar
+        self._tokenize_data(val_df, val_path, tokenizer_name)
+        self._tokenize_data(test_df, test_path, tokenizer_name)
+        self._tokenize_data(train_df, train_path, tokenizer_name)
+
+        if self.ADD_PADDING:
+            print("\n[Info] Applying padding to tokenized datasets...\n")
+            self.add_padding(val_path)
+            self.add_padding(test_path)
+            self.add_padding(train_path)
+
+        print("\n=== Data Split Statistics ===")
         print(f"Training set: {len(train_df)} examples")
         print(f"Validation set: {len(val_df)} examples")
         print(f"Test set: {len(test_df)} examples")
 
-        print("\nTopic distribution:")
+        print("\n=== Top 5 Topics Distribution ===")
         print("Training topics:")
         print(train_df["topic"].value_counts().head())
-        print("\nValidation topics:")
-        print(val_df["topic"].value_counts().head())
-        print("\nTest topics:")
-        print(test_df["topic"].value_counts().head())
 
     def _tokenize_data(self, df: pd.DataFrame, output_path: str, tokenizer_name: str):
         """
@@ -307,17 +334,156 @@ class DataExtractor:
         output_path (str): Path to save the tokenized data.
         tokenizer_name (str): Name of the tokenizer to use.
         """
+        print(f"[Tokenization] Initializing tokenizer '{tokenizer_name}'...")
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
+
+        # Tokenize each title, converting tokens to IDs and to lowercase
         df_title = df["title"].apply(
             lambda x: tokenizer.convert_tokens_to_ids(
                 tokenizer.tokenize(str(x).lower())
             )
         )
+        print("[Tokenization] Tokenization of 'title' column completed.")
 
+        # Create output DataFrame and remove rows with empty tokenized titles
         df_output = pd.DataFrame({"title": df_title, "topic": df["topic"]})
-        df_output.to_csv(output_path, index=False)
+        initial_rows = len(df_output)
+        df_output = df_output[df_output["title"].apply(lambda x: len(x) > 0)]
+        removed = initial_rows - len(df_output)
+        print(f"[Cleaning] Removed {removed} rows with empty tokenized titles.")
 
-        print(f"Tokenized data saved to: {output_path}")
+        # Si se requiere padding, calcular estadísticas de longitud
+        if self.ADD_PADDING:
+            lengths = df_output["title"].apply(len).tolist()
+            max_length = max(lengths)
+            min_length = min(lengths)
+            avg_length = sum(lengths) / len(lengths) if lengths else 0
+
+            if max_length > self.max_tittle_length:
+                self.max_tittle_length = max_length
+
+            print(
+                f"[Padding] Token lengths statistics: Max = {max_length}, Min = {min_length}, Avg = {avg_length:.2f}"
+            )
+
+        df_output.to_csv(output_path, index=False)
+        print(f"[Save] Tokenized data successfully saved to: {output_path}\n")
+
+    def add_padding(self, path: str):
+        """
+        Adds padding to the tokenized data.
+
+        Parameters:
+        path (str): Path to the tokenized data file to addding padding.
+        """
+        df = pd.read_csv(path, dtype=str)
+
+        padded_titles = []
+
+        for title_str in df["title"]:
+            # Convert string representation of list to actual list of integers
+
+            title_tokens = eval(title_str)
+            if not isinstance(title_tokens, list):
+                title_tokens = [int(title_str)] if title_str.isdigit() else []
+
+            # Add padding
+            padded_tokens = title_tokens + [0] * (
+                self.max_tittle_length - len(title_tokens)
+            )
+
+            # Convert back to string representation
+            padded_titles.append(str(padded_tokens))
+
+        df_output = pd.DataFrame({"title": padded_titles, "topic": df["topic"]})
+
+        df_output.to_csv(path, index=False)
+
+    def save_data_to_numpy(self):
+        """
+        Save data to numpy arrays and perform necessary transformations.
+        This method performs the following steps:
+        1. Loads CSV files for training, validation, and testing datasets.
+        2. Converts string representations of lists (e.g., "[1, 2, 3, 4, 5]") into numpy arrays.
+        3. Transforms the 'title' column lists into numpy arrays.
+        4. Saves the tokenized data into .npy files.
+        5. One-hot encodes the 'topic' labels and saves them.
+        Prints informative messages at each step to indicate progress.
+        Raises:
+            FileNotFoundError: If any of the CSV files are not found.
+            ValueError: If there is an issue with converting string representations to numpy arrays.
+        """
+        print("\n[Step 4] Saving data to numpy arrays...\n")
+
+        csv_test_path = f"{self.TOKENIZED_DATA_DIR}/test.csv"
+        csv_val_path = f"{self.TOKENIZED_DATA_DIR}/val.csv"
+        csv_train_path = f"{self.TOKENIZED_DATA_DIR}/train.csv"
+
+        print("[INFO] Loading CSV files...")
+        test_data = pd.read_csv(csv_test_path)
+        val_data = pd.read_csv(csv_val_path)
+        train_data = pd.read_csv(csv_train_path)
+        print(
+            f"[INFO] Loaded datasets: Train ({len(train_data)}), Val ({len(val_data)}), Test ({len(test_data)})"
+        )
+
+        # Convert string representations (e.g., "[1, 2, 3, 4, 5]") into numpy arrays
+        print("[INFO] Converting string-based vectors to numpy arrays...")
+        for df_name, df in zip(
+            ["Test", "Validation", "Train"], [test_data, val_data, train_data]
+        ):
+            for col in df.columns:
+                if df[col].dtype == "object" and not df[col].empty:
+                    first_val = df[col].iloc[0]
+                    if (
+                        isinstance(first_val, str)
+                        and first_val.strip().startswith("[")
+                        and first_val.strip().endswith("]")
+                    ):
+                        df[col] = df[col].apply(
+                            lambda elem: np.array(ast.literal_eval(elem))
+                        )
+            print(f"[INFO] {df_name} dataset processed.")
+
+        # Convert the 'title' column lists into numpy arrays
+        print("[INFO] Transforming 'title' columns into numpy matrices...")
+        X_train = np.array(train_data["title"].tolist())
+        X_val = np.array(val_data["title"].tolist())
+        X_test = np.array(test_data["title"].tolist())
+        print(
+            f"[INFO] Shapes -> Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}"
+        )
+
+        # Save tokenized data
+        np.save(self.NP_X_DATA_PATH + "/train", X_train)
+        np.save(self.NP_X_DATA_PATH + "/val", X_val)
+        np.save(self.NP_X_DATA_PATH + "/test", X_test)
+        print("[INFO] Tokenized data saved.")
+
+        # One-hot encode and save topic labels
+        print("[INFO] One-hot encoding topics...")
+        self._oneHotEncode(train_data["topic"].tolist(), self.NP_Y_DATA_PATH + "/train")
+        self._oneHotEncode(val_data["topic"].tolist(), self.NP_Y_DATA_PATH + "/val")
+        self._oneHotEncode(test_data["topic"].tolist(), self.NP_Y_DATA_PATH + "/test")
+        print("[INFO] One-hot encoding completed.")
+
+    def _oneHotEncode(self, targets: list, np_path: str):
+        unique_labels = sorted(list(set(targets)))
+        label_to_index = {label: i for i, label in enumerate(unique_labels)}
+
+        n_samples = len(targets)
+        n_classes = len(unique_labels)
+
+        print(f"[INFO] Encoding {n_samples} labels into {n_classes} categories.")
+
+        # Create empty array of shape (n_samples, n_classes)
+        one_hot_encoded = np.zeros((n_samples, n_classes))
+
+        for i, label in enumerate(targets):
+            one_hot_encoded[i, label_to_index[label]] = 1
+
+        np.save(np_path, one_hot_encoded)
+        print(f"[INFO] Saved one-hot encoded labels to {np_path}")
 
     def process_pipeline(
         self,
@@ -343,6 +509,9 @@ class DataExtractor:
 
         # Step 3: Split and tokenize data
         self.split_and_tokenize_data(val_ratio, test_ratio)
+
+        # Step 4: Save data to numpy
+        self.save_data_to_numpy()
 
         print("\nData processing pipeline completed successfully!")
 
