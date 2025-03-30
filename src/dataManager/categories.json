@@ -1,0 +1,223 @@
+{
+    "web": [
+        "web development",
+        "web",
+        "internet",
+        "html",
+        "css",
+        "web application",
+        "php",
+        "angular",
+        "apache",
+        "sql",
+        "mysql",
+        "relational database"
+    ],
+    "software": [
+        "software development",
+        "software",
+        "app development",
+        "software engineering"
+    ],
+    "programming": [
+        "python programming",
+        "python",
+        "r programming",
+        "java",
+        "java programming",
+        "java annotation",
+        "c++",
+        "c programming",
+        "Flutter",
+        "node.js"
+    ],
+    "software tools": [
+        "compiler",
+        "debugging",
+        "github",
+        "algorithms",
+        "software tools"
+    ],
+    "computacion": ["computers", "computer programming"],
+    "backend": ["backend development", "backend"],
+    "cloud": [
+        "cloud computing",
+        "cloud services",
+        "google cloud platform",
+        "aws",
+        "cloud computing security",
+        "cloud platforms"
+    ],
+    "data": [
+        "data analysis",
+        "data science",
+        "analysis",
+        "data",
+        "data structures",
+        "big data"
+    ],
+    "ai": [
+        "ai",
+        "nlp",
+        "natural language processing",
+        "natural language",
+        "image processing"
+    ],
+    "machine learning": [
+        "machine learning",
+        "deep learning",
+        "regression analysis",
+        "linear regression",
+        "logistic regression",
+        "decision tree",
+        "reinforcement learning",
+        "keras",
+        "numpy"
+    ],
+    "security": [
+        "security",
+        "cybersecurity",
+        "information security",
+        "network security"
+    ],
+    "blockchain": ["blockchain", "cryptocurrency", "web3"],
+    "science": [
+        "science",
+        "physics",
+        "biology",
+        "neuroscience",
+        "medical research",
+        "psychology",
+        "brain",
+        "biotech",
+        "genetics",
+        "dna",
+        "chemistry"
+    ],
+    "health": [
+        "medicine",
+        "health",
+        "health care",
+        "human body",
+        "public health",
+        "medical research",
+        "illness",
+        "cancer",
+        "mental health",
+        "food"
+    ],
+    "finance": [
+        "business finance",
+        "finance",
+        "economics",
+        "accounting",
+        "investment",
+        "market (economics)"
+    ],
+    "business": ["business", "sales", "marketing", "entrepreneur", "brand", "trading", "sales strategy", "cost", "pricing", "e-commerce"],
+    "personal development": [
+        "leadership and management",
+        "leadership",
+        "strategy",
+        "self",
+        "project mine",
+        "critical thinking"
+    ],
+    "society": [
+        "culture",
+        "society",
+        "social change",
+        "global issues",
+        "inequality",
+        "world cultures"
+    ],
+    "history and politics": [
+        "history",
+        "politics",
+        "government",
+        "future",
+        "religion",
+        "history and politics"
+    ],
+    "entertainment": [
+        "entertainment",
+        "music",
+        "musical instruments",
+        "storytelling",
+        "photography",
+        "humor",
+        "social media"
+    ],
+    "ecology": [
+        "environment",
+        "climate change",
+        "sustainability",
+        "ecology",
+        "pollution",
+        "biodiversity",
+        "solar energy"
+    ],
+    "education": [
+        "education",
+        "teaching",
+        "collaboration",
+        "history"
+    ],
+    "creativity": ["creativity", "invention", "personal growth", "writing"],
+    "art": [
+        "art",
+        "design",
+        "creativity",
+        "poetry",
+        "animation",
+        "graphic design",
+        "visual arts",
+        "illustration",
+        "3d printing",
+        "art history",
+        "guitar"
+    ],
+    "math": ["math", "mathematics", "euler's totient function", "game theory", "chart", "matrices"],
+    "universe": [
+        "space",
+        "universe",
+        "cosmos",
+        "astronomy",
+        "astrophysics",
+        "solar system"
+    ],
+    "ted": [
+        "ted",
+        "tedx",
+        "ted fellows",
+        "ted-ed",
+        "tedmed",
+        "ted residency",
+        "tedyouth"
+    ],
+    "human behavior": [
+        "motivation",
+        "happiness",
+        "potential",
+        "violence",
+        "parenting",
+        "family",
+        "death",
+        "life"
+    ],
+    "project": [
+        "project management",
+        "project",
+        "project planning",
+        "process"
+
+    ],
+    "language": [
+        "language",
+        "english",
+        "en",
+        "spanish",
+        "english language",
+        "grammar"
+    ]
+}

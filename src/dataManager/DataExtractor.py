@@ -28,14 +28,15 @@ class DataExtractor:
     SKIP_TOPICS = []
 
     # Hyperparameter configuration
-    DEFAULT_TOP_TOPICS = 400
-    DEFAULT_VAL_RATIO = 0.1
-    DEFAULT_TEST_RATIO = 0.1
+    DEFAULT_TOP_TOPICS = 40
+    DEFAULT_VAL_RATIO = 0.15
+    DEFAULT_TEST_RATIO = 0.2
     RANDOM_SEED = 43
 
-    ADD_PADDING = True
+    HAS_PADDING = True
 
     LEN_OF_TOKENS = 0
+    MAX_WORD_LENGTH = 8
 
     def __init__(self):
         """Initializes the data extractor and creates the necessary directories."""
@@ -53,18 +54,27 @@ class DataExtractor:
     def extract_all_datasets(self):
         """Extracts all available datasets."""
         print("Step 1: Extracting data from all sources...")
-        self.extract_coursera()
+        self.extract_coursera1()
         self.extract_medium_blog_data()
         self.extract_posts()
         self.extract_ted_talks_en()
         self.extract_udemy_courses()
+        self.extract_coursera2()
+        self.extractEdx_courses()
+        self.extractAppendix()
         print("Data extraction completed.")
 
-    def extract_coursera(self):
+    def extract_coursera1(self):
         """Extracts structured information from the Coursera.csv file"""
         print("Extracting data from Coursera...")
-        csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/Coursera.csv")
+        csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/Coursera1.csv")
         csv_manager.extractCoursera(f"{self.FILTERED_DATA_DIR}/Coursera.csv")
+
+    def extract_coursera2(self):
+        """Extracts structured information from the Coursera2.csv file"""
+        print("Extracting data from Coursera2...")
+        csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/Coursera2.csv")
+        csv_manager.extractCoursera2(f"{self.FILTERED_DATA_DIR}/Coursera2.csv")
 
     def extract_medium_blog_data(self):
         """Extracts structured information from the MediumBlogData.csv file"""
@@ -91,6 +101,18 @@ class DataExtractor:
         print("Extracting data from Udemy Courses...")
         csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/udemy_courses.csv")
         csv_manager.extractUdemyCourses(f"{self.FILTERED_DATA_DIR}/udemy_courses.csv")
+
+    def extractEdx_courses(self):
+        """Extracts structured information from the edx_courses.csv file"""
+        print("Extracting data from Edx Courses...")
+        csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/edx_courses.csv")
+        csv_manager.extractEdx_courses(f"{self.FILTERED_DATA_DIR}/edx_courses.csv")
+
+    def extractAppendix(self):
+        """Extracts structured information from the appendix.csv file"""
+        print("Extracting data from Appendix...")
+        csv_manager = CsvManager(f"{self.RAW_DATA_DIR}/appendix.csv")
+        csv_manager.extractAppendix(f"{self.FILTERED_DATA_DIR}/appendix.csv")
 
     def generate_consolidated_data(self, n_top_topics: int = None):
         """
@@ -140,7 +162,7 @@ class DataExtractor:
         top_topics = result_df["topic"].value_counts().nlargest(n_top_topics).index
         filtered_df = result_df[result_df["topic"].isin(top_topics)]
         print(
-            f"[Info] Retained topics count: {len(filtered_df)} samples out of {len(result_df)}"
+            f"[Info] Retained topics count after extract top {n_top_topics}, from {len(filtered_df)} samples out of {len(result_df)}"
         )
 
         filtered_df.to_csv(output_file, index=False)
@@ -198,6 +220,8 @@ class DataExtractor:
         # Additional cleanup
         filtered_text = (
             filtered_text.replace("  ", " ")
+            .replace("   ", " ")
+            .replace("    ", " ")
             .replace("'", "")
             .replace('"', "")
             .replace(".", "")
@@ -210,23 +234,32 @@ class DataExtractor:
     def _filter_input(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Processes the input DataFrame by filtering the 'title' column and removing rows
-        with topics listed in self.SKIP_TOPICS.
+        with topics listed in self.SKIP_TOPICS and with titles exceeding MAX_WORD_LENGTH words.
 
         Parameters:
             df (pd.DataFrame): Input DataFrame containing a 'title' column.
 
         Returns:
-            pd.DataFrame: Processed DataFrame with cleaned 'title' values and filtered topics.
+            pd.DataFrame: Processed DataFrame with clean 'title' values and filtered topics.
         """
         print("\n[Info] Rows before filtering SKIP_TOPICS:", len(df))
 
+        # Filter out rows with topics in SKIP_TOPICS
         df_filtered = df[~df["topic"].isin(self.SKIP_TOPICS)]
-
         print("[Info] Rows after filtering SKIP_TOPICS:", len(df_filtered))
 
-        df_title = df_filtered["title"].apply(self.filter_text)
+        # Apply filter_text on the 'title' column
+        df_filtered.loc[:, "title"] = df_filtered["title"].apply(self.filter_text)
 
-        return pd.DataFrame({"title": df_title, "topic": df_filtered["topic"]})
+        # Filter out rows where the title has more words than allowed
+        df_filtered = df_filtered[
+            df_filtered["title"].apply(lambda t: len(t.split()) <= self.MAX_WORD_LENGTH)
+        ]
+        print("[Info] Rows after filtering by max word length:", len(df_filtered))
+
+        return pd.DataFrame(
+            {"title": df_filtered["title"], "topic": df_filtered["topic"]}
+        )
 
     def print_topic_distribution(self, top_n: int = 10):
         """
@@ -243,6 +276,10 @@ class DataExtractor:
 
             for topic in topic_counts.index[:top_n]:
                 print(f"{topic}: {topic_counts[topic]}")
+
+            print(f"\nMax topic: {topic_counts.idxmax()} ({topic_counts.max()})")
+            print(f"Min topic: {topic_counts.idxmin()} ({topic_counts.min()})")
+            print(f"Mean topic count: {topic_counts.mean()}")
 
             print(f"\nTotal topics: {len(topic_counts)}")
             print(f"Total examples: {len(df)}")
@@ -337,7 +374,7 @@ class DataExtractor:
         self._tokenize_data(test_df, test_path, tokenizer_name)
         self._tokenize_data(train_df, train_path, tokenizer_name)
 
-        if self.ADD_PADDING:
+        if self.HAS_PADDING:
             print("\n[Info] Applying padding to tokenized datasets...\n")
             self.add_padding(val_path)
             self.add_padding(test_path)
@@ -348,9 +385,10 @@ class DataExtractor:
         print(f"Validation set: {len(val_df)} examples")
         print(f"Test set: {len(test_df)} examples")
 
-        print("\n=== Top 5 Topics Distribution ===")
+        print(f"\n=== Top {self.DEFAULT_TOP_TOPICS} Topics Distribution ===")
         print("Training topics:")
-        print(train_df["topic"].value_counts().head())
+        for topic, count in train_df["topic"].value_counts().items():
+            print(f"  {topic}: {count}")
 
     def tokenize_text(
         self, text: str, tokenizer: BertTokenizer.from_pretrained = None
@@ -399,7 +437,7 @@ class DataExtractor:
         print(f"[Cleaning] Removed {removed} rows with empty tokenized titles.")
 
         # Si se requiere padding, calcular estadísticas de longitud
-        if self.ADD_PADDING:
+        if self.HAS_PADDING:
             lengths = df_output["title"].apply(len).tolist()
             max_length = max(lengths)
             min_length = min(lengths)
@@ -551,8 +589,7 @@ class DataExtractor:
             json.dump(label_to_index, f)
         print(f"[INFO] Saved label mapping to {mapping_path}")
 
-        # Optionally, save the one-hot encoded array if needed:
-        # np.save(save_path, one_hot_encoded)
+        np.save(save_path, one_hot_encoded)
 
     def onehot_to_string(self, onehot: np.ndarray):
         """
@@ -610,5 +647,16 @@ class DataExtractor:
 
 
 # de = DataExtractor()
-# de.SKIP_TOPICS = [".properties"]
+# de.SKIP_TOPICS = [
+#     ".properties",
+#     "animals",
+#     "children",
+#     "identity",
+#     "disease",
+#     "women",
+#     "performance",
+#     "war",
+#     "africa",
+# ]
 # de.process_pipeline()
+# de.print_topic_distribution(40)

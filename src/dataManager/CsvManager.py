@@ -28,7 +28,12 @@ class CsvManager:
                 for skill in skills:
                     skill = skill.lower().strip()
                     if skill:
-                        dfNew_rows.append({"title": courseName, "topic": skill})
+                        dfNew_rows.append(
+                            {
+                                "title": courseName,
+                                "topic": self.get_category(skill),
+                            }
+                        )
 
             except json.JSONDecodeError as e:
                 print(f"Error al decodificar JSON en la fila {row}: {e}")
@@ -49,7 +54,9 @@ class CsvManager:
             title = row.blog_title
             topic = str(row.topic).replace("-", " ").strip()
 
-            dfNew_rows.append({"title": title, "topic": topic})
+            dfNew_rows.append(
+                {"title": title, "topic": self.get_category(topic.lower())}
+            )
 
         dfNew = pd.DataFrame(dfNew_rows)
         dfNew.to_csv(output_path, index=False)
@@ -64,7 +71,9 @@ class CsvManager:
 
             for topic in topics:
                 if topic:
-                    dfNew_rows.append({"title": title, "topic": topic})
+                    dfNew_rows.append(
+                        {"title": title, "topic": self.get_category(topic.lower())}
+                    )
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
         print(
@@ -88,7 +97,12 @@ class CsvManager:
 
             for topic in topics:
                 if topic:
-                    dfNew_rows.append({"title": title, "topic": topic.strip()})
+                    dfNew_rows.append(
+                        {
+                            "title": title,
+                            "topic": self.get_category(topic.strip().lower()),
+                        }
+                    )
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
         print(
@@ -114,9 +128,9 @@ class CsvManager:
                 skip_count += 1
                 continue
 
-            topic = str(row.subject).strip()
+            topic = str(row.subject).strip().lower()
             if topic:
-                dfNew_rows.append({"title": title, "topic": topic})
+                dfNew_rows.append({"title": title, "topic": self.get_category(topic)})
 
         dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
         print(
@@ -129,6 +143,75 @@ class CsvManager:
             )
         dfNew.to_csv(output_path, index=False)
         print(f"Consolidated Udemy courses saved to: {output_path}")
+
+    def extractCoursera2(self, output_path):
+        """Converts the format of Course Name and Skills into multiple rows called title and topic."""
+        dfNew_rows = []
+
+        for row in self.df.itertuples(index=False):
+            courseName = row.CourseName.lower()
+            skills = row.Skills.strip().split("  ")
+
+            for skill in skills:
+                skill = skill.lower().strip()
+                if skill:
+                    dfNew_rows.append(
+                        {
+                            "title": courseName,
+                            "topic": self.get_category(skill),
+                        }
+                    )
+
+        dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
+
+        print(
+            f"Extracted Coursera: from {len(self.df)} rows to {len(dfNew)} rows after processing.."
+        )
+
+        dfNew.to_csv(output_path, index=False)
+
+    def extractEdx_courses(self, output_path):
+        """Extracts the structured information from the edx_courses.csv file, from title, subject, language,  to title, topic. keeping only the rows in 'English'."""
+        dfNew_rows = []
+
+        for row in self.df.itertuples(index=False):
+            title = row.title
+            topics = str(row.subject).strip().lower().split("&")
+
+            for topic in topics:
+                if row.language == "English":
+                    dfNew_rows.append(
+                        {"title": title, "topic": self.get_category(topic.strip())}
+                    )
+
+        dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
+        print(
+            f"Extracted edX Courses: from {len(self.df)} rows to {len(dfNew)} rows after processing."
+        )
+        dfNew.to_csv(output_path, index=False)
+
+    def extractAppendix(self, output_path):
+        """Extracts data from the appendix.csv file."""
+        dfNew_rows = []
+
+        for row in self.df.itertuples(index=False):
+            title = row.title
+            topics = str(row.topic).replace(", and", ",").lower().split(",")
+
+            for topic in topics:
+                if topic:
+                    dfNew_rows.append(
+                        {
+                            "title": title,
+                            "topic": self.get_category(topic.strip().lower()),
+                        }
+                    )
+
+        dfNew = pd.DataFrame(dfNew_rows).drop_duplicates()
+        print(
+            f"Extracted Appendix: from {len(self.df)} rows to {len(dfNew)} rows after processing."
+        )
+        dfNew.to_csv(output_path, index=False)
 
     def save_to_csv(self, output_path):
         """Guarda el DataFrame modificado en un archivo CSV."""
@@ -146,11 +229,21 @@ class CsvManager:
         """Removes duplicate rows from the DataFrame."""
         self.df.drop_duplicates(inplace=True)
 
-    def save_to_csv(self, output_path=None):
-        """Saves the modified DataFrame to a CSV file."""
-        path = output_path if output_path else self.file_path
-        self.df.to_csv(path, index=False)
+    def get_category(self, subtopic: str) -> str:
+        """Load the file ./categories.json and return the category of the subtopic.
+        Categories is formed by a dictionary with the category as key and a list of subtopics as set of values.
 
-    def display(self, n=5):
-        """Displays the first 'n' rows of the DataFrame."""
-        print(self.df.head(n))
+        Args:
+            subtopic (str): The subtopic to get the category from.
+
+        Returns:
+            str: The category of the subtopic.
+        """
+        with open("src/dataManager/categories.json") as f:
+            categories = json.load(f)
+
+        for category, subtopics in categories.items():
+            if subtopic in subtopics:
+                return category
+
+        return subtopic

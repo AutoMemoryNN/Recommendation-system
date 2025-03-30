@@ -17,7 +17,6 @@ def load_data():
     NP_X_TEST = "data/x_data/test.npy"
     NP_Y_TEST = "data/y_data/test.npy"
 
-    # Load data
     x_train = np.load(NP_X_TRAIN)
     y_train = np.load(NP_Y_TRAIN)
 
@@ -40,35 +39,27 @@ def load_data():
 def create_model(input_shape, output_shape):
     model = Sequential(
         [
-            # Input layer
-            Dense(256, activation="relu", input_shape=(input_shape,)),
-            BatchNormalization(),
-            Dropout(0.3),
-            # Hidden layers
-            Dense(512, activation="relu"),
-            BatchNormalization(),
-            Dropout(0.3),
-            Dense(512, activation="relu"),
-            BatchNormalization(),
-            Dropout(0.3),
-            Dense(256, activation="relu"),
+            Dense(512, activation="relu", input_shape=(input_shape,)),
             BatchNormalization(),
             Dropout(0.2),
-            # Output layer - using sigmoid for multi-label classification
+            Dense(256, activation="relu"),
+            BatchNormalization(),
+            Dropout(0.1),
+            Dense(128, activation="relu"),
+            BatchNormalization(),
+            Dropout(0.1),
             Dense(output_shape, activation="sigmoid"),
         ]
     )
 
-    # Compile the model
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    model.compile(optimizer="rmsprop", loss="binary_crossentropy", metrics=["accuracy"])
 
     return model
 
 
-def train_model(model, x_train, y_train, x_val, y_val, batch_size=64, epochs=10):
-    # Define callbacks
+def train_model(model, x_train, y_train, x_val, y_val, batch_size=32, epochs=18):
     early_stopping = EarlyStopping(
-        monitor="val_loss", patience=5, restore_best_weights=True
+        monitor="val_loss", patience=10, restore_best_weights=True
     )
 
     history = model.fit(
@@ -92,17 +83,35 @@ def evaluate_model(model, x_test, y_test):
 
     # For multi-label classification, additional metrics might be useful
     y_pred = model.predict(x_test)
-    y_pred_binary = (y_pred > 0.5).astype(int)
+    y_pred_binary = (y_pred > 0.8).astype(int)
 
     # Calculate the exact match ratio (all labels correct)
     exact_match = np.mean(np.all(y_pred_binary == y_test, axis=1))
     print(f"Exact Match Ratio: {exact_match:.4f}")
 
-    # Calculate per-class accuracy
-    per_class_accuracy = np.mean(y_pred_binary == y_test, axis=0)
-    print(f"Average Per-Class Accuracy: {np.mean(per_class_accuracy):.4f}")
+    # Calculate top-5 accuracy
+    evaluate_top_n_accuracy(model, x_test, y_test)
 
     return y_pred_binary
+
+
+def evaluate_top_n_accuracy(model, x_test, y_test, n=5):
+    y_pred = model.predict(x_test)
+
+    top5_pred_indices = np.argsort(y_pred, axis=1)[:, -5:]
+
+    y_true_indices = [np.where(y_test[i] == 1)[0] for i in range(y_test.shape[0])]
+
+    correct_predictions = sum(
+        any(idx in top5_pred_indices[i] for idx in y_true_indices[i])
+        for i in range(len(y_test))
+    )
+
+    top5_accuracy = correct_predictions / len(y_test)
+
+    print(f"\nTop-{n} Accuracy: {top5_accuracy:.4f}\n")
+
+    return top5_accuracy
 
 
 def plot_training_history(history):
@@ -132,27 +141,20 @@ def plot_training_history(history):
 
 
 def main():
-    # Load data
     x_train, y_train, x_val, y_val, x_test, y_test = load_data()
 
-    # Create model
-    input_shape = x_train.shape[1]  # 60
-    output_shape = y_train.shape[1]  # 400
+    input_shape = x_train.shape[1]
+    output_shape = y_train.shape[1]
     model = create_model(input_shape, output_shape)
 
-    # Print model summary
     model.summary()
 
-    # Train model
     model, history = train_model(model, x_train, y_train, x_val, y_val)
 
-    # Plot training history
     plot_training_history(history)
 
-    # Evaluate model
     y_pred = evaluate_model(model, x_test, y_test)
 
-    # Save the model
     model.save("final_model.h5")
     print("Model saved to 'final_model.h5'")
 
